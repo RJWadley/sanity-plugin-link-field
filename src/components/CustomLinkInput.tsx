@@ -1,6 +1,7 @@
 import {Select, Spinner, Text} from '@sanity/ui'
-import {memo, useEffect, useMemo, useState} from 'react'
+import {memo, useMemo} from 'react'
 import {SanityDocument, set, type StringInputProps, useFormValue, useWorkspace} from 'sanity'
+import useSWR from 'swr'
 
 import {CustomLinkType, CustomLinkTypeOptions, LinkValue} from '../types'
 
@@ -19,63 +20,51 @@ export const CustomLinkInput = memo(function CustomLinkInput(
   const workspace = useWorkspace()
   const document = useFormValue([]) as SanityDocument
   const linkValue = useFormValue(props.path.slice(0, -1)) as LinkValue | null
-  const [asyncOptionsResult, setAsyncOptionsResult] = useState<{
-    key: string
-    options: CustomLinkTypeOptions[] | null
-    error: string | null
-  } | null>(null)
-
   const customLinkType = linkValue
     ? props.customLinkTypes.find((type) => type.value === linkValue.type)
     : undefined
-  const pathKey = useMemo(() => JSON.stringify(props.path), [props.path])
-  const requestKey = customLinkType ? `${customLinkType.value}:${pathKey}` : null
+  const requestKey = useMemo(
+    () =>
+      customLinkType && !Array.isArray(customLinkType.options)
+        ? [
+            'sanity-plugin-link-field',
+            'custom-link-options',
+            customLinkType.value,
+            props.path,
+            document?._id,
+            document?._rev,
+            workspace.currentUser?.id,
+          ]
+        : null,
+    [customLinkType, document?._id, document?._rev, props.path, workspace.currentUser?.id],
+  )
 
-  useEffect(() => {
-    if (!customLinkType || Array.isArray(customLinkType.options) || !requestKey) return () => {}
-
-    let isCurrentRequest = true
-
-    customLinkType
-      .options(document, props.path, workspace.currentUser)
-      .then((resolved) => {
-        if (!isCurrentRequest) return
-        setAsyncOptionsResult({
-          key: requestKey,
-          options: resolved,
-          error: null,
-        })
-      })
-      .catch(() => {
-        if (!isCurrentRequest) return
-        setAsyncOptionsResult({
-          key: requestKey,
-          options: null,
-          error: 'Failed to load options',
-        })
-      })
-
-    return () => {
-      isCurrentRequest = false
-    }
-  }, [customLinkType, document, props.path, requestKey, workspace.currentUser])
+  const {
+    data: asyncOptions,
+    error,
+    isLoading,
+  } = useSWR<CustomLinkTypeOptions[]>(
+    requestKey,
+    () =>
+      customLinkType && !Array.isArray(customLinkType.options)
+        ? customLinkType.options(document, props.path, workspace.currentUser)
+        : Promise.resolve([]),
+    {
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+    },
+  )
 
   if (!customLinkType) return null
 
   const options = Array.isArray(customLinkType.options)
     ? customLinkType.options
-    : asyncOptionsResult?.key === requestKey
-      ? asyncOptionsResult.options
-      : null
-  const loadError =
-    !Array.isArray(customLinkType.options) && asyncOptionsResult?.key === requestKey
-      ? asyncOptionsResult.error
-      : null
+    : asyncOptions || null
 
-  if (loadError) {
+  if (error) {
     return (
       <Text size={1} style={errorTextStyle}>
-        {loadError}
+        Failed to load options
       </Text>
     )
   }
@@ -96,7 +85,7 @@ export const CustomLinkInput = memo(function CustomLinkInput(
         ))}
       </>
     </Select>
-  ) : (
+  ) : isLoading ? (
     <Spinner style={spinnerStyle} />
-  )
+  ) : null
 })

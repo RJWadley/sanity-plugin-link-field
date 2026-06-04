@@ -56,6 +56,7 @@
     "lint": "eslint .",
     "prepublishOnly": "npm run build",
     "prepare": "lefthook install",
+    "test": "vitest run",
     "watch": "pkg-utils watch --strict",
     "check:types": "tsc --pretty --noEmit",
     "check:format": "prettier --check .",
@@ -66,7 +67,9 @@
     "@sanity/icons": "^3",
     "@sanity/incompatible-plugin": "^1.0.5",
     "@sanity/ui": "^3",
-    "lucide-react": "^0.576.0"
+    "lucide-react": "^0.576.0",
+    "swr": "^2.4.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.2",
@@ -93,7 +96,8 @@
     "semantic-release": "^25.0.3",
     "semantic-release-license": "^1.0.3",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8",
+    "vitest": "^3.2.6"
   },
   "peerDependencies": {
     "react": "^18 || ^19",

@@ -1,7 +1,6 @@
 import {Box, Flex, Stack, Text} from '@sanity/ui'
 import {memo, type ReactNode, useCallback, useEffect, useMemo} from 'react'
 import {
-  set,
   type FieldMember,
   FormFieldValidationStatus,
   ObjectInputMember,
@@ -10,6 +9,12 @@ import {
 
 import {CustomLinkInput} from './CustomLinkInput'
 import {LinkTypeInput} from './LinkTypeInput'
+import {
+  DESTINATION_FIELD_NAMES,
+  getCanonicalLinkType,
+  getDestinationFieldName,
+  getLinkStatePatches,
+} from '../helpers/linkValueState'
 import {isCustomLink} from '../helpers/typeGuards'
 import {LinkInputProps} from '../types'
 
@@ -20,6 +25,9 @@ const validationBoxStyle = {
   marginLeft: 'auto',
   marginRight: '12px',
 } as const
+const destinationFieldNameSet = new Set<string>(DESTINATION_FIELD_NAMES)
+
+const getMemberName = (member: FieldMember): string | undefined => (member as {name?: string}).name
 
 /**
  * Custom input component for the link object.
@@ -29,9 +37,8 @@ const validationBoxStyle = {
  * The rest of the fields ("blank" and "advanced") are rendered as usual.
  */
 export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
-  const [textField, typeField, linkField, ...otherFields] = props.members as FieldMember[]
+  const members = props.members as FieldMember[]
   const {options} = props.schemaType
-  const currentType = props.value?.type
   const handleChange = props.onChange
   const enabledBuiltInLinkTypes = options?.enabledBuiltInLinkTypes ?? props.enabledBuiltInLinkTypes
   const linkableSchemaTypes = options?.linkableSchemaTypes ?? props.linkableSchemaTypes
@@ -49,18 +56,56 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
     return [...builtInTypes, ...customTypes]
   }, [customLinkTypes, enabledBuiltInLinkTypes, linkableSchemaTypes])
 
-  useEffect(() => {
-    if (!currentType || availableTypeValues.includes(currentType)) return
-    if (availableTypeValues.length === 0) return
-    handleChange(set(availableTypeValues[0], ['type']))
-  }, [availableTypeValues, currentType, handleChange])
+  const canonicalType = useMemo(
+    () =>
+      getCanonicalLinkType({
+        value: props.value,
+        availableTypeValues,
+        customLinkTypes,
+      }),
+    [availableTypeValues, customLinkTypes, props.value],
+  )
 
-  const {
-    field: {
-      validation: linkFieldValidation,
-      schemaType: {description: linkFieldDescription},
-    },
-  } = linkField
+  const activeDestinationFieldName = useMemo(
+    () => getDestinationFieldName(canonicalType, customLinkTypes),
+    [canonicalType, customLinkTypes],
+  )
+
+  useEffect(() => {
+    const patches = getLinkStatePatches({
+      value: props.value,
+      canonicalType,
+      activeDestinationField: activeDestinationFieldName,
+    })
+    if (patches.length > 0) handleChange(patches)
+  }, [activeDestinationFieldName, canonicalType, handleChange, props.value])
+
+  const textField = useMemo(
+    () => members.find((member) => getMemberName(member) === 'text'),
+    [members],
+  )
+  const typeField = useMemo(
+    () => members.find((member) => getMemberName(member) === 'type'),
+    [members],
+  )
+  const activeDestinationField = useMemo(
+    () =>
+      activeDestinationFieldName
+        ? members.find((member) => getMemberName(member) === activeDestinationFieldName)
+        : undefined,
+    [activeDestinationFieldName, members],
+  )
+  const otherFields = useMemo(
+    () =>
+      members.filter((member) => {
+        const name = getMemberName(member)
+        return name !== 'text' && name !== 'type' && !destinationFieldNameSet.has(name || '')
+      }),
+    [members],
+  )
+
+  const linkFieldValidation = activeDestinationField?.field.validation ?? []
+  const linkFieldDescription = activeDestinationField?.field.schemaType.description
 
   const description = useMemo(
     () =>
@@ -108,18 +153,29 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
 
   const textFieldSchemaType = useMemo(
     () => ({
-      ...textField.field.schemaType,
-      title: options?.textLabel || textField.field.schemaType.title,
+      ...textField?.field.schemaType,
+      title: options?.textLabel || textField?.field.schemaType.title,
     }),
-    [options?.textLabel, textField.field.schemaType],
+    [options?.textLabel, textField?.field.schemaType],
   )
 
-  const selectedFieldName = (linkField as {name?: string}).name
   const renderCustomLinkInput = useCallback(
     (inputProps: StringInputProps) => (
       <CustomLinkInput customLinkTypes={customLinkTypes} {...inputProps} />
     ),
     [customLinkTypes],
+  )
+  const handleSelectType = useCallback(
+    (nextType: string) => {
+      const nextDestinationField = getDestinationFieldName(nextType, customLinkTypes)
+      const patches = getLinkStatePatches({
+        value: props.value,
+        canonicalType: nextType,
+        activeDestinationField: nextDestinationField,
+      })
+      if (patches.length > 0) handleChange(patches)
+    },
+    [customLinkTypes, handleChange, props.value],
   )
 
   const renderLinkTypeInput = useCallback(
@@ -128,20 +184,23 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
         customLinkTypes={customLinkTypes}
         linkableSchemaTypes={linkableSchemaTypes}
         enabledBuiltInLinkTypes={enabledBuiltInLinkTypes}
+        onSelectType={handleSelectType}
         {...inputProps}
       />
     ),
-    [customLinkTypes, enabledBuiltInLinkTypes, linkableSchemaTypes],
+    [customLinkTypes, enabledBuiltInLinkTypes, handleSelectType, linkableSchemaTypes],
   )
 
   const linkFieldSchemaType = useMemo(() => {
+    if (!activeDestinationField) return undefined
+
     const schemaType: Record<string, unknown> = {
-      ...linkField.field.schemaType,
+      ...activeDestinationField.field.schemaType,
       title: undefined,
       description: undefined,
     }
 
-    if (selectedFieldName === 'internalLink') {
+    if (activeDestinationFieldName === 'internalLink') {
       if (hasFieldLevelLinkableSchemaTypes) {
         schemaType.to = linkableSchemaTypes.map((type) => ({type}))
       }
@@ -158,42 +217,42 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
       }
     }
 
-    if (selectedFieldName === 'value') {
+    if (activeDestinationFieldName === 'value') {
       schemaType.components = {
-        ...linkField.field.schemaType.components,
+        ...activeDestinationField.field.schemaType.components,
         input: renderCustomLinkInput,
       }
     }
 
-    return schemaType as unknown as typeof linkField.field.schemaType
+    return schemaType as unknown as typeof activeDestinationField.field.schemaType
   }, [
+    activeDestinationField,
+    activeDestinationFieldName,
     hasFieldLevelLinkableSchemaTypes,
     hasFieldLevelReferenceFilterOptions,
     hasFieldLevelWeakReferences,
-    linkField,
     linkableSchemaTypes,
     referenceFilterOptions,
     renderCustomLinkInput,
-    selectedFieldName,
     weakReferences,
   ])
 
   const typeFieldSchemaType = useMemo(
     () => ({
-      ...typeField.field.schemaType,
+      ...typeField?.field.schemaType,
       title: undefined,
       components: {
-        ...typeField.field.schemaType.components,
+        ...typeField?.field.schemaType.components,
         input: renderLinkTypeInput,
       },
     }),
-    [renderLinkTypeInput, typeField.field.schemaType],
+    [renderLinkTypeInput, typeField?.field.schemaType],
   )
 
   return (
     <Stack space={4}>
       {/* Render the text field if enabled */}
-      {options?.enableText && (
+      {options?.enableText && textField && (
         <ObjectInputMember
           member={{
             ...textField,
@@ -217,29 +276,33 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
 
         <Flex gap={2} align="flex-start">
           {/* Render the type field (without its label) */}
-          <ObjectInputMember
-            member={{
-              ...typeField,
-              field: {
-                ...typeField.field,
-                schemaType: typeFieldSchemaType as unknown as typeof typeField.field.schemaType,
-              },
-            }}
-            {...inlineFieldRenderProps}
-          />
-
-          <Stack space={2} style={fullWidthStyle}>
-            {/* Render the input for the selected type of link (without its label) */}
+          {typeField && (
             <ObjectInputMember
               member={{
-                ...linkField,
+                ...typeField,
                 field: {
-                  ...linkField.field,
-                  schemaType: linkFieldSchemaType,
+                  ...typeField.field,
+                  schemaType: typeFieldSchemaType as unknown as typeof typeField.field.schemaType,
                 },
               }}
               {...inlineFieldRenderProps}
             />
+          )}
+
+          <Stack space={2} style={fullWidthStyle}>
+            {/* Render the input for the selected type of link (without its label) */}
+            {activeDestinationField && linkFieldSchemaType && (
+              <ObjectInputMember
+                member={{
+                  ...activeDestinationField,
+                  field: {
+                    ...activeDestinationField.field,
+                    schemaType: linkFieldSchemaType,
+                  },
+                }}
+                {...inlineFieldRenderProps}
+              />
+            )}
 
             {/* Render any validation errors for the link field */}
             {linkFieldValidation.length > 0 && (

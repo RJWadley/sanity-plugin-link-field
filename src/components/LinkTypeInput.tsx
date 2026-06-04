@@ -82,10 +82,12 @@ export const LinkTypeInput = memo(function LinkTypeInput({
   path,
   value,
   onChange,
+  onSelectType,
   customLinkTypes = [],
   linkableSchemaTypes,
   enabledBuiltInLinkTypes,
 }: StringInputProps & {
+  onSelectType?: (type: string) => void
   customLinkTypes?: CustomLinkType[]
   linkableSchemaTypes: LinkFieldPluginOptions['linkableSchemaTypes']
   enabledBuiltInLinkTypes: BuiltInLinkType[]
@@ -110,12 +112,20 @@ export const LinkTypeInput = memo(function LinkTypeInput({
     [linkTypes, value],
   )
 
+  const handleSelectType = (nextType: string) => {
+    if (onSelectType) {
+      onSelectType(nextType)
+      return
+    }
+    onChange(set(nextType))
+  }
+
   if (isInlineLink) {
     return (
       <Select
         value={selectedType?.value ?? ''}
         onChange={(event) => {
-          onChange(set(event.currentTarget.value))
+          handleSelectType(event.currentTarget.value)
         }}
         aria-label="Select link type"
         disabled={linkTypes.length === 0}
@@ -154,7 +164,7 @@ export const LinkTypeInput = memo(function LinkTypeInput({
               text={type.title}
               icon={getIcon(type)}
               onClick={() => {
-                onChange(set(type.value))
+                handleSelectType(type.value)
               }}
             />
           ))}
