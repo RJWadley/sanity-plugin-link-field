@@ -86,6 +86,7 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
 
   useEffect(() => {
     if (props.readOnly) return
+    if (!props.value) return
 
     const patches = getLinkStatePatches({
       value: props.value,
