@@ -2,6 +2,7 @@ import {Box, Flex, Stack, Text} from '@sanity/ui'
 import {memo, type ReactNode, useCallback, useEffect, useMemo} from 'react'
 import {
   type FieldMember,
+  type FormPatch,
   FormFieldValidationStatus,
   ObjectInputMember,
   type StringInputProps,
@@ -28,6 +29,8 @@ const validationBoxStyle = {
 const destinationFieldNameSet = new Set<string>(DESTINATION_FIELD_NAMES)
 
 const getMemberName = (member: FieldMember): string | undefined => (member as {name?: string}).name
+const isReadOnlyPatchError = (error: unknown): boolean =>
+  error instanceof Error && error.message === 'Attempted to patch a read-only document'
 
 /**
  * Custom input component for the link object.
@@ -40,6 +43,16 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
   const members = props.members as FieldMember[]
   const {options} = props.schemaType
   const handleChange = props.onChange
+  const safeHandleChange = useCallback(
+    (patches: FormPatch[]) => {
+      try {
+        handleChange(patches)
+      } catch (error) {
+        if (!isReadOnlyPatchError(error)) throw error
+      }
+    },
+    [handleChange],
+  )
   const enabledBuiltInLinkTypes = options?.enabledBuiltInLinkTypes ?? props.enabledBuiltInLinkTypes
   const linkableSchemaTypes = options?.linkableSchemaTypes ?? props.linkableSchemaTypes
   const customLinkTypes = options?.customLinkTypes ?? props.customLinkTypes
@@ -79,8 +92,8 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
       canonicalType,
       activeDestinationField: activeDestinationFieldName,
     })
-    if (patches.length > 0) handleChange(patches)
-  }, [activeDestinationFieldName, canonicalType, handleChange, props.readOnly, props.value])
+    if (patches.length > 0) safeHandleChange(patches)
+  }, [activeDestinationFieldName, canonicalType, props.readOnly, props.value, safeHandleChange])
 
   const textField = useMemo(
     () => members.find((member) => getMemberName(member) === 'text'),
@@ -177,9 +190,9 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
         canonicalType: nextType,
         activeDestinationField: nextDestinationField,
       })
-      if (patches.length > 0) handleChange(patches)
+      if (patches.length > 0) safeHandleChange(patches)
     },
-    [customLinkTypes, handleChange, props.readOnly, props.value],
+    [customLinkTypes, props.readOnly, props.value, safeHandleChange],
   )
 
   const renderLinkTypeInput = useCallback(
