@@ -72,13 +72,15 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
   )
 
   useEffect(() => {
+    if (props.readOnly) return
+
     const patches = getLinkStatePatches({
       value: props.value,
       canonicalType,
       activeDestinationField: activeDestinationFieldName,
     })
     if (patches.length > 0) handleChange(patches)
-  }, [activeDestinationFieldName, canonicalType, handleChange, props.value])
+  }, [activeDestinationFieldName, canonicalType, handleChange, props.readOnly, props.value])
 
   const textField = useMemo(
     () => members.find((member) => getMemberName(member) === 'text'),
@@ -167,6 +169,8 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
   )
   const handleSelectType = useCallback(
     (nextType: string) => {
+      if (props.readOnly) return
+
       const nextDestinationField = getDestinationFieldName(nextType, customLinkTypes)
       const patches = getLinkStatePatches({
         value: props.value,
@@ -175,7 +179,7 @@ export const LinkInput = memo(function LinkInput(props: LinkInputProps) {
       })
       if (patches.length > 0) handleChange(patches)
     },
-    [customLinkTypes, handleChange, props.value],
+    [customLinkTypes, handleChange, props.readOnly, props.value],
   )
 
   const renderLinkTypeInput = useCallback(

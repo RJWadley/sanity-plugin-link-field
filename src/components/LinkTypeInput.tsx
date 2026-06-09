@@ -80,6 +80,7 @@ function getIcon(type: LinkType): ComponentType {
 export const LinkTypeInput = memo(function LinkTypeInput({
   id,
   path,
+  readOnly,
   value,
   onChange,
   onSelectType,
@@ -128,7 +129,7 @@ export const LinkTypeInput = memo(function LinkTypeInput({
           handleSelectType(event.currentTarget.value)
         }}
         aria-label="Select link type"
-        disabled={linkTypes.length === 0}
+        disabled={readOnly || linkTypes.length === 0}
         style={selectStyle}
       >
         {linkTypes.map((type) => (
@@ -151,7 +152,7 @@ export const LinkTypeInput = memo(function LinkTypeInput({
           title="Select link type"
           aria-label={`Select link type${selectedType ? ` (currently: ${selectedType.title})` : ''}`}
           style={selectStyle}
-          disabled={linkTypes.length === 0}
+          disabled={readOnly || linkTypes.length === 0}
         />
       }
       id={id}
